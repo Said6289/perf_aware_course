@@ -136,16 +136,16 @@ decode_mov:
 	and di, 0b0000011100000000 ; mask out R/M field
 	shr di, 8
 
-	shl al, 3  ; offset in terms of number of elements
+	shl al, 3 ; offset in terms of number of elements
 
 	; set bit 3 which effectively determines the table
 	or sil, al
 	or dil, al
 
 	cmp ah, 0b10 ; check D bit to know if we should swap registers
-	cmovne r9, rsi
+	cmovne rax, rsi
 	cmovne rsi, rdi
-	cmovne rdi, r9
+	cmovne rdi, rax
 
 	lea rax, [reg_table_w0]
 	lea rcx, [mov_instruction]
