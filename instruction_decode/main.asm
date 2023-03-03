@@ -116,15 +116,15 @@ decode_mov:
 	cmp al, 0b10001000 ; check if it is the mov opcode
 	jne .print_unknown_instruction
 
-	mov cl, bh
-	and cl, 0b11000000 ; mask out MOD field
-	cmp cl, 0b11000000 ; check if is a register to register mov
+	mov al, bh
+	and al, 0b11000000 ; mask out MOD field
+	cmp al, 0b11000000 ; check if is a register to register mov
 	jne .print_unknown_instruction
 
-	mov cl, bl
-	mov ch, bl
-	and cl, 0b10 ; mask out D bit
-	and ch, 0b01 ; mask out W bit
+	mov al, bl
+	mov ah, bl
+	and al, 0b01 ; mask out W bit
+	and ah, 0b10 ; mask out D bit
 
 	xor rsi, rsi
 	mov si, bx
@@ -136,14 +136,13 @@ decode_mov:
 	and di, 0b0000011100000000 ; mask out R/M field
 	shr di, 8
 
-	shl ch, 3  ; offset in terms of number of elements
-	mov bl, ch ; so we can do the or below
+	shl al, 3  ; offset in terms of number of elements
 
 	; set bit 3 which effectively determines the table
-	or sil, bl
-	or dil, bl
+	or sil, al
+	or dil, al
 
-	cmp cl, 0b10 ; check D bit to know if we should swap registers
+	cmp ah, 0b10 ; check D bit to know if we should swap registers
 	cmovne r9, rsi
 	cmovne rsi, rdi
 	cmovne rdi, r9
