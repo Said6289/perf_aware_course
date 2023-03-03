@@ -6,8 +6,8 @@ section .data
 	file_not_found db "File not found.", 0xd, 0xa, 0
 	unknown_instruction db "; unknown instruction", 0xd, 0xa, 0
 	mode db "rb", 0
-	reg_table_w0 db "al", 0, "cl", 0, "dl", 0, "bl", 0, "ah", 0, "ch", 0, "dh", 0, "bh", 0
-	reg_table_w1 db "ax", 0, "cx", 0, "dx", 0, "bx", 0, "sp", 0, "bp", 0, "si", 0, "di", 0
+	reg_table_w0 db "al", 0, 0, "cl", 0, 0, "dl", 0, 0, "bl", 0, 0, "ah", 0, 0, "ch", 0, 0, "dh", 0, 0, "bh", 0, 0
+	reg_table_w1 db "ax", 0, 0, "cx", 0, 0, "dx", 0, 0, "bx", 0, 0, "sp", 0, 0, "bp", 0, 0, "si", 0, 0, "di", 0, 0
 	mov_instruction db "mov %s, %s", 0xd, 0xa, 0
 
 section .text
@@ -143,10 +143,6 @@ decode_mov:
 	or sil, bl
 	or dil, bl
 
-	; stride by 3
-	imul rsi, 3
-	imul rdi, 3
-
 	cmp cl, 0b10 ; check D bit to know if we should swap registers
 	cmovne r9, rsi
 	cmovne rsi, rdi
@@ -154,8 +150,8 @@ decode_mov:
 
 	lea rax, [reg_table_w0]
 	lea rcx, [mov_instruction]
-	lea rdx, [rax + rsi]
-	lea r8,  [rax + rdi]
+	lea rdx, [rax + 4 * rsi]
+	lea r8,  [rax + 4 * rdi]
 	call printf
 
 	jmp .return
