@@ -130,24 +130,29 @@ decode_mov:
 	mov si, bx
 	and si, 0b0011100000000000 ; mask out REG field
 	shr si, 11 ; shift into the least significant bits (8 + 3)
-	imul rsi, 3 ; stride by 3 bytes
 
 	xor rdi, rdi
 	mov di, bx
 	and di, 0b0000011100000000 ; mask out R/M field
 	shr di, 8
-	imul rdi, 3 ; stride by 3 bytes
 
-	lea rax, [reg_table_w0]
-	lea rbx, [reg_table_w1]
-	cmp ch, 1 ; check W bit to know which table to use
-	cmove rax, rbx
+	shl ch, 3  ; offset in terms of number of elements
+	mov bl, ch ; so we can do the or below
+
+	; set bit 3 which effectively determines the table
+	or sil, bl
+	or dil, bl
+
+	; stride by 3
+	imul rsi, 3
+	imul rdi, 3
 
 	cmp cl, 0b10 ; check D bit to know if we should swap registers
 	cmovne r9, rsi
 	cmovne rsi, rdi
 	cmovne rdi, r9
 
+	lea rax, [reg_table_w0]
 	lea rcx, [mov_instruction]
 	lea rdx, [rax + rsi]
 	lea r8,  [rax + rdi]
