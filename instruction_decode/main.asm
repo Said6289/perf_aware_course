@@ -6,6 +6,8 @@ section .data
 	file_not_found db "File not found.", 0xd, 0xa, 0
 	unknown_instruction db "; unknown instruction", 0xd, 0xa, 0
 	mode db "rb", 0
+	first_line db "; %s disassembly:", 0xd, 0xa, 0
+	second_line db "bits 16", 0xd, 0xa, 0
 	reg_table_w0 db "al", 0, 0, "cl", 0, 0, "dl", 0, 0, "bl", 0, 0, "ah", 0, 0, "ch", 0, 0, "dh", 0, 0, "bh", 0, 0
 	reg_table_w1 db "ax", 0, 0, "cx", 0, 0, "dx", 0, 0, "bx", 0, 0, "sp", 0, 0, "bp", 0, 0, "si", 0, 0, "di", 0, 0
 	mov_instruction db "mov %s, %s", 0xd, 0xa, 0
@@ -28,7 +30,9 @@ main:
 	cmp rcx, 2
 	jl .no_file_specified
 
-	mov rcx, [rdx + 8]
+	mov rsi, [rdx + 8]
+
+	mov rcx, rsi
 	lea rdx, [mode]
 	call fopen ; FILE* is in rax now
 
@@ -42,6 +46,13 @@ main:
 	mov rdx, 0 ; offset = 0
 	mov r8, 2  ; origin = SEEK_END
 	call fseek
+
+	lea rcx, [first_line]
+	mov rdx, rsi
+	call printf
+
+	lea rcx, [second_line]
+	call printf
 
 	mov rcx, rbx
 	call ftell
