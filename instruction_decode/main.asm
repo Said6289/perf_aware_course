@@ -4,20 +4,19 @@ default rel
 section .data
 	usage db "USAGE: %s <file>", 0xd, 0xa, 0
 	file_not_found db "File not found.", 0xd, 0xa, 0
-	unknown_instruction db "; unknown instruction", 0xd, 0xa, 0
+	unknown_instruction db 0x25, 0x25, `error "encountered unknown instruction"`, 0xd, 0xa, 0
 	mode db "rb", 0
 	first_line db "; %s disassembly:", 0xd, 0xa, 0
 	second_line db "bits 16", 0xd, 0xa, 0
 	reg_table_w0 db "al", 0, 0, "cl", 0, 0, "dl", 0, 0, "bl", 0, 0, "ah", 0, 0, "ch", 0, 0, "dh", 0, 0, "bh", 0, 0
 	reg_table_w1 db "ax", 0, 0, "cx", 0, 0, "dx", 0, 0, "bx", 0, 0, "sp", 0, 0, "bp", 0, 0, "si", 0, 0, "di", 0, 0
 	mov_instruction db "mov %s, %s", 0xd, 0xa, 0
+	mov_immediate_to_reg db "mov %s, %u", 0xd, 0xa, 0
 
 section .text
 
 extern fopen
 extern fclose
-extern fseek
-extern ftell
 extern fgetc
 extern printf
 
@@ -41,12 +40,6 @@ main:
 	cmp rbx, 0 ; check if FILE* is NULL
 	je .could_not_read_file
 
-	; do the fseek(), ftell(); fseek() dance
-	mov rcx, rbx
-	mov rdx, 0 ; offset = 0
-	mov r8, 2  ; origin = SEEK_END
-	call fseek
-
 	lea rcx, [first_line]
 	mov rdx, rsi
 	call printf
@@ -54,22 +47,11 @@ main:
 	lea rcx, [second_line]
 	call printf
 
-	mov rcx, rbx
-	call ftell
-	mov rdi, rax
-	shr rdi, 1 ; compute number of 2 byte instructions in the file, i.e. divide by 2
-
-	mov rcx, rbx
-	mov rdx, 0 ; offset = 0
-	mov r8,  0 ; origin = SEEK_SET
-	call fseek
-
 .decode_start:
-	cmp rdi, 0
-	je .decode_end
 	mov rcx, rbx
 	call decode_mov
-	sub rdi, 1
+	cmp eax, 0
+	jl .decode_end
 	jmp .decode_start
 .decode_end:
 
@@ -107,45 +89,44 @@ decode_mov:
 
 	sub rsp, 32 ; shadow space
 
+	xor rbx, rbx ; rbx will be used to store the instruction
 	mov rsi, rcx ; save 1st argument since it is volatile
-
-	xor rbx, rbx
 
 	; argument already in rcx
 	call fgetc
+	cmp eax, 0
+	jl .return
+
+	; save first byte of instruction for later
 	mov bl, al
+
+	; check for register/memory to/from register
+	and al, 0b11111100
+	cmp al, 0b10001000
+	jne .check_immediate_to_reg
 
 	mov rcx, rsi
 	call fgetc
+
+	; save second byte of instruction, now whole instruction is in bx
 	mov bh, al
 
-	; instruction now in bx
-	xor rax, rax
-	mov al, bl
-	and al, 0b11111100 ; mask out opcode
-
-	cmp al, 0b10001000 ; check if it is the mov opcode
-	jne .print_unknown_instruction
-
-	mov al, bh
 	and al, 0b11000000 ; mask out MOD field
 	cmp al, 0b11000000 ; check if is a register to register mov
 	jne .print_unknown_instruction
+
+	mov si, bx
+	and rsi, 0b0011100000000000 ; mask out REG field
+	shr si, 11 ; shift into the least significant bits (8 + 3)
+
+	mov di, bx
+	and rdi, 0b0000011100000000 ; mask out R/M field
+	shr di, 8
 
 	mov al, bl
 	mov ah, bl
 	and al, 0b01 ; mask out W bit
 	and ah, 0b10 ; mask out D bit
-
-	xor rsi, rsi
-	mov si, bx
-	and si, 0b0011100000000000 ; mask out REG field
-	shr si, 11 ; shift into the least significant bits (8 + 3)
-
-	xor rdi, rdi
-	mov di, bx
-	and di, 0b0000011100000000 ; mask out R/M field
-	shr di, 8
 
 	shl al, 3 ; offset in terms of number of elements
 
@@ -159,16 +140,74 @@ decode_mov:
 	cmovne rdi, rax
 
 	lea rax, [reg_table_w0]
+
 	lea rcx, [mov_instruction]
 	lea rdx, [rax + 4 * rsi]
 	lea r8,  [rax + 4 * rdi]
 	call printf
+
+	; bh contains the last byte we read from the file
+	xor rax, rax
+	mov al, bh
+
+	jmp .return
+
+.check_immediate_to_reg:
+	and al, 0b11110000
+	cmp al, 0b10110000
+	jne .print_unknown_instruction
+
+	; read the second byte of instruction
+	mov rcx, rsi
+	call fgetc
+
+	; save second byte of instruction
+	mov bh, al
+
+	; check W bit
+	mov al, bl
+	and al, 0b00001000
+	cmp al, 0
+	je .skip_third_byte
+
+	; read the third byte of instruction
+	mov rcx, rsi
+	call fgetc
+
+	; save third byte of instruction
+	and eax, 0xFF
+	shl eax, 16
+	or  ebx, eax
+
+	.skip_third_byte:
+	; mask out REG field
+	mov di, bx
+	and rdi, 0b111
+
+	shl al, 3 ; offset in terms of number of elements
+
+	; set bit 3 which effectively determines the table
+	or dil, al
+
+	lea rax, [reg_table_w0]
+
+	lea rcx, [mov_immediate_to_reg]
+	lea rdx, [rax + 4 * rdi]
+	mov r8d, ebx
+	shr r8d, 8
+	call printf
+
+	; bh contains the last byte we read from the file
+	xor rax, rax
+	mov al, bh
 
 	jmp .return
 
 .print_unknown_instruction:
 	lea rcx, [unknown_instruction]
 	call printf
+
+	mov rax, -1
 
 .return:
 	add rsp, 32
