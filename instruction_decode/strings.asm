@@ -23,7 +23,7 @@ disp_table:
 mov_reg_to_reg      db "mov %s, %s",        0xd, 0xa, 0
 mov_mem_to_reg      db "mov %s, [%s]",      0xd, 0xa, 0
 mov_reg_to_mem      db "mov [%s], %s",      0xd, 0xa, 0
-mov_mem_to_reg_disp db "mov %s, [%s %+hd]", 0xd, 0xa, 0
-mov_reg_to_mem_disp db "mov [%s %+hd], %s", 0xd, 0xa, 0
+mov_mem_to_reg_disp db "mov %s, [%s %c %hd]", 0xd, 0xa, 0
+mov_reg_to_mem_disp db "mov [%s %c %hd], %s", 0xd, 0xa, 0
 
 mov_imm_to_reg db "mov %s, %d", 0xd, 0xa, 0

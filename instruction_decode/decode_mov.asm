@@ -127,16 +127,60 @@ decode_memory_to_register:
 	cmp r12, 0
 	jne decode_memory_to_register_displacement
 
+	mov al, bl
+	and al, 0b10 ; mask out D bit
+	cmp al, 0b10
+	jne .swap
+
 	lea rcx, [mov_mem_to_reg]
 	call printf
+	jmp decode_mov_return_value
 
+	.swap:
+	mov rax, rdx
+	mov rdx, r8
+	mov r8,  rax
+	lea rcx, [mov_reg_to_mem]
+	call printf
 	jmp decode_mov_return_value
 
 decode_memory_to_register_displacement:
+	mov al, bl
+	and al, 0b10 ; mask out D bit
+	cmp al, 0b10
+	jne .swap
+
 	lea rcx, [mov_mem_to_reg_disp]
+	mov r10d, ebx
+	shr r10d, 16
+	mov r9, '+'
+	cmp r10d, 0
+	jge .no_minus_0
+	mov r9, '-'
+	.no_minus_0:
+	sub rsp, 16
+	mov [rsp], r10
+	sub rsp, 32
+	call printf
+	add rsp, 48
+
+	jmp decode_mov_return_value
+
+	.swap:
+	sub rsp, 16
+	mov [rsp], rdx
+	mov rdx, r8
+	lea rcx, [mov_reg_to_mem_disp]
 	mov r9d, ebx
 	shr r9d, 16
+	mov r8, '+'
+	cmp r9d, 0
+	jge .no_minus_1
+	mov r8, '-'
+	.no_minus_1:
+	sub rsp, 32
 	call printf
+	add rsp, 48
 
 	jmp decode_mov_return_value
 
