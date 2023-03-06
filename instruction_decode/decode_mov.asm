@@ -1,3 +1,25 @@
+%macro __write_mnemonic 0
+	lea rcx, [mov_mnemonic]
+	call write_string
+%endmacro
+
+%macro __write_reg 1
+	mov rcx, %1
+	mov dl, bl
+	and rdx, 0b01 ; W bit
+	call write_reg
+%endmacro
+
+%macro __write_comma 0
+	lea rcx, [comma]
+	call write_string
+%endmacro
+
+%macro __write_newline 0
+	mov rcx, 0xa
+	call putchar
+%endmacro
+
 decode_mov:
 	push rbp
 	mov rbp, rsp
@@ -85,104 +107,51 @@ decode_register_to_register:
 	jne decode_memory_to_register
 
 	mov al, bl
-	mov ah, bl
-	and al, 0b01 ; mask out W bit
-	and ah, 0b10 ; mask out D bit
-
-	shl al, 3 ; offset in terms of number of elements
-
-	; set bit 3 which effectively determines the table
-	or sil, al
-	or dil, al
-
-	cmp ah, 0b10 ; check D bit to know if we should swap registers
+	and al, 0b10 ; mask out D bit
+	cmp al, 0b10 ; check D bit to know if we should swap registers
 	cmovne rax, rsi
 	cmovne rsi, rdi
 	cmovne rdi, rax
 
-	lea rax, [reg_table_w0]
-
-	lea rcx, [mov_reg_to_reg]
-	lea rdx, [rax + 4 * rsi]
-	lea r8,  [rax + 4 * rdi]
-	call printf
+	__write_mnemonic
+	__write_reg rsi
+	__write_comma
+	__write_reg rdi
+	__write_newline
 
 	jmp decode_mov_return_value
 
 decode_memory_to_register:
-	mov al, bl
-	and al, 0b01 ; mask out W bit
+%macro __write_disp 0
+	mov rcx, rdi
+	mov rdx, r12
+	mov r8, rbx
+	shr r8, 16
+	and r8, 0xFFFF
+	call write_disp
+%endmacro
 
-	shl al, 3 ; offset in terms of number of elements
-
-	; set bit 3 which effectively determines the table
-	or sil, al
-
-	lea rax, [reg_table_w0]
-	lea rdx, [rax + 4 * rsi]
-
-	lea rax, [disp_table]
-	lea r8,  [rax + 8 * rdi]
-
-	cmp r12, 0
-	jne decode_memory_to_register_displacement
+	__write_mnemonic
 
 	mov al, bl
-	and al, 0b10 ; mask out D bit
+	and al, 0b10 ; D bit
 	cmp al, 0b10
 	jne .swap
-
-	lea rcx, [mov_mem_to_reg]
-	call printf
-	jmp decode_mov_return_value
-
+	__write_reg rsi
+	__write_comma
+	__write_disp
+	jmp .no_swap
 	.swap:
-	mov rax, rdx
-	mov rdx, r8
-	mov r8,  rax
-	lea rcx, [mov_reg_to_mem]
-	call printf
-	jmp decode_mov_return_value
+	__write_disp
+	__write_comma
+	__write_reg rsi
 
-decode_memory_to_register_displacement:
-	mov al, bl
-	and al, 0b10 ; mask out D bit
-	cmp al, 0b10
-	jne .swap
-
-	lea rcx, [mov_mem_to_reg_disp]
-	mov r10d, ebx
-	shr r10d, 16
-	mov r9, '+'
-	cmp r10d, 0
-	jge .no_minus_0
-	mov r9, '-'
-	.no_minus_0:
-	sub rsp, 16
-	mov [rsp], r10
-	sub rsp, 32
-	call printf
-	add rsp, 48
+	.no_swap:
+	__write_newline
 
 	jmp decode_mov_return_value
 
-	.swap:
-	sub rsp, 16
-	mov [rsp], rdx
-	mov rdx, r8
-	lea rcx, [mov_reg_to_mem_disp]
-	mov r9d, ebx
-	shr r9d, 16
-	mov r8, '+'
-	cmp r9d, 0
-	jge .no_minus_1
-	mov r8, '-'
-	.no_minus_1:
-	sub rsp, 32
-	call printf
-	add rsp, 48
-
-	jmp decode_mov_return_value
+%unmacro __write_disp 0
 
 decode_immediate_to_reg:
 	and al, 0b11110000
@@ -254,4 +223,98 @@ decode_mov_return:
 
 	pop rbp
 
+	ret
+
+; rcx = register index [0, 8)
+; rdx = 0 -> byte, 1 -> word
+write_reg:
+	push rbx
+	sub rsp, 32
+
+	shl rdx, 3   ; move to bit 3
+	or  rcx, rdx ; select table
+
+	; load string into rbx
+	lea rax, [reg_table_w0]
+	lea rcx, [rax + 4 * rcx]
+	call write_string
+
+	add rsp, 32
+	pop rbx
+	ret
+
+; rcx = equation index [0, 8)
+; rdx = MOD [0, 3)
+; r8  = displacement in bytes
+write_disp:
+	push rbx
+	push rsi
+	push rdi
+	sub rsp, 32
+
+	mov rdi, rcx
+	mov rbx, rdx
+	mov rsi, r8
+
+	mov rcx, '['
+	call putchar
+
+	; load string into rbx
+	lea rax, [disp_table]
+	lea rcx, [rax + 8 * rdi]
+	call write_string
+
+	cmp rbx, 0
+	jg .has_disp
+	jmp .end
+
+	.has_disp:
+	cmp rsi, 0
+	je .end
+
+	mov rcx, 0x20
+	call putchar
+
+	mov rcx, '+'
+	mov rax, '-'
+	cmp si, 0
+	cmovl rcx, rax
+	call putchar
+
+	mov rcx, 0x20
+	call putchar
+
+	lea rcx, [fmt_s16]
+	; compute absolute value of dx
+	mov rdx, rsi
+	sar si, 15
+	xor dx, si
+	sub dx, si
+	call printf
+
+	.end:
+	mov rcx, ']'
+	call putchar
+
+	add rsp, 32
+	pop rdi
+	pop rsi
+	pop rbx
+	ret
+
+; rcx = address of string
+write_string:
+	push rbx
+	sub rsp, 32
+	mov rbx, rcx
+	.loop:
+	movzx rcx, byte [rbx]
+	cmp rcx, 0 ; check for null terminator
+	je .end
+	call putchar
+	add rbx, 1
+	jmp .loop
+	.end:
+	add rsp, 32
+	pop rbx
 	ret

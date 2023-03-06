@@ -10,6 +10,7 @@ extern fopen
 extern fclose
 extern fgetc
 extern printf
+extern putchar
 
 global main
 main:

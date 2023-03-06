@@ -27,3 +27,7 @@ mov_mem_to_reg_disp db "mov %s, [%s %c %hd]", 0xd, 0xa, 0
 mov_reg_to_mem_disp db "mov [%s %c %hd], %s", 0xd, 0xa, 0
 
 mov_imm_to_reg db "mov %s, %d", 0xd, 0xa, 0
+
+fmt_s16 db "%hd", 0
+mov_mnemonic db "mov ", 0
+comma db ", ", 0
