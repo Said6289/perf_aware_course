@@ -14,13 +14,16 @@ disp_table:
 	db "bx + si", 0
 	db "bx + di", 0
 	db "bp + si", 0
+	db "bp + di", 0
 	db "si", 6 dup byte (0)
 	db "di", 6 dup byte (0)
 	db "bp", 6 dup byte (0)
 	db "bx", 6 dup byte (0)
 
-mov_reg_to_reg      db "mov %s, %s",         0xd, 0xa, 0
+mov_reg_to_reg      db "mov %s, %s",        0xd, 0xa, 0
 mov_mem_to_reg      db "mov %s, [%s]",      0xd, 0xa, 0
-mov_mem_to_reg_disp db "mov %s, [%s + %d]", 0xd, 0xa, 0
+mov_reg_to_mem      db "mov [%s], %s",      0xd, 0xa, 0
+mov_mem_to_reg_disp db "mov %s, [%s %+hd]", 0xd, 0xa, 0
+mov_reg_to_mem_disp db "mov [%s %+hd], %s", 0xd, 0xa, 0
 
-mov_imm_to_reg db "mov %s, %u", 0xd, 0xa, 0
+mov_imm_to_reg db "mov %s, %d", 0xd, 0xa, 0

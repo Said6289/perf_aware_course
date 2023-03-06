@@ -36,30 +36,41 @@ decode_register_to_register:
 	and r12, 0b1100000000000000 ; mask out MOD field
 	shr r12, 14
 
-	; counter for number of bytes to fetch
-	mov r13, r12
-	cmp r13, 2
-	mov rax, 0
-	cmovg r13, rax ; fetch maximum of 2 bytes
+	; 8-bit displacement
+	cmp r12, 0b01
+	jne .word_displacement
 
-	; fetch al bytes
-	.fetch:
-	; loop condition
-	cmp r13, 0
-	jle .fetch_exit
-	; read next byte
 	mov rcx, rsi
 	call fgetc
-	; or byte into ebx
-	and eax, 0xFF
-	mov ecx, 2
-	sub ecx, r12d
-	shl eax, cl
-	or  ebx, eax
-	; decrement number of bytes
-	sub r13, 1
-	jmp .fetch
-	.fetch_exit:
+
+	and rax, 0xFF
+	movsx rax, al
+	shl rax, 16
+	or ebx, eax
+
+	jmp .no_displacement
+
+	.word_displacement:
+	cmp r12, 0b10
+	jne .no_displacement
+
+	mov rcx, rsi
+	call fgetc
+
+	and rax, 0xFF
+	mov r13, rax
+
+	mov rcx, rsi
+	call fgetc
+
+	and rax, 0xFF
+	shl rax, 8
+	or  r13, rax
+
+	shl r13, 16
+	or ebx, r13d
+
+	.no_displacement:
 
 	mov si, bx
 	and rsi, 0b0011100000000000 ; mask out REG field
@@ -100,24 +111,31 @@ decode_register_to_register:
 
 decode_memory_to_register:
 	mov al, bl
-	mov ah, bl
 	and al, 0b01 ; mask out W bit
-	and ah, 0b10 ; mask out D bit
 
 	shl al, 3 ; offset in terms of number of elements
 
 	; set bit 3 which effectively determines the table
 	or sil, al
 
-	lea rcx, [mov_mem_to_reg]
-
 	lea rax, [reg_table_w0]
 	lea rdx, [rax + 4 * rsi]
 
 	lea rax, [disp_table]
-	imul rdi, 8 ; stride by 8
-	lea r8,  [rax + rdi]
+	lea r8,  [rax + 8 * rdi]
 
+	cmp r12, 0
+	jne decode_memory_to_register_displacement
+
+	lea rcx, [mov_mem_to_reg]
+	call printf
+
+	jmp decode_mov_return_value
+
+decode_memory_to_register_displacement:
+	lea rcx, [mov_mem_to_reg_disp]
+	mov r9d, ebx
+	shr r9d, 16
 	call printf
 
 	jmp decode_mov_return_value
@@ -136,7 +154,7 @@ decode_immediate_to_reg:
 
 	; check W bit
 	mov al, bl
-	and al, 0b00001000
+	and al, 0b1000
 	cmp al, 0
 	je .skip_third_byte
 
