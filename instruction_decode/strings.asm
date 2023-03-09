@@ -29,5 +29,8 @@ mov_reg_to_mem_disp db "mov [%s %c %hd], %s", 0xd, 0xa, 0
 mov_imm_to_reg db "mov %s, %d", 0xd, 0xa, 0
 
 fmt_s16 db "%hd", 0
+fmt_u16 db "%hu", 0
 mov_mnemonic db "mov ", 0
 comma db ", ", 0
+byte_str db "byte ", 0
+word_str db "word ", 0

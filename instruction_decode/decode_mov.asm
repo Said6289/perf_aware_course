@@ -1,3 +1,53 @@
+%macro __read_second_byte 0
+	mov rcx, rsi
+	call fgetc
+
+	; save second byte of instruction, now whole instruction is in bx
+	mov bh, al
+%endmacro
+
+%macro __read_disp 1
+	; check MOD field for how many more bytes to fetch
+	mov %1, rbx
+	and %1, 0b1100000000000000 ; mask out MOD field
+	shr %1, 14
+
+	; 8-bit displacement
+	cmp %1, 0b01
+	jne .word_displacement
+
+	mov rcx, rsi
+	call fgetc
+
+	and rax, 0xFF
+	movsx rax, al
+	shl rax, 16
+	or ebx, eax
+
+	jmp .no_displacement
+
+	.word_displacement:
+	cmp %1, 0b10
+	jne .no_displacement
+
+	mov rcx, rsi
+	call fgetc
+
+	and rax, 0xFF
+	mov r13, rax
+
+	mov rcx, rsi
+	call fgetc
+
+	and rax, 0xFF
+	shl rax, 8
+	or  r13, rax
+
+	shl r13, 16
+	or ebx, r13d
+	.no_displacement:
+%endmacro
+
 %macro __write_mnemonic 0
 	lea rcx, [mov_mnemonic]
 	call write_string
@@ -8,6 +58,15 @@
 	mov dl, bl
 	and rdx, 0b01 ; W bit
 	call write_reg
+%endmacro
+
+%macro __write_disp 0
+	mov rcx, rdi
+	mov rdx, r12
+	mov r8, rbx
+	shr r8, 16
+	and r8, 0xFFFF
+	call write_disp
 %endmacro
 
 %macro __write_comma 0
@@ -41,58 +100,64 @@ decode_mov:
 
 	; save first byte of instruction for later
 	mov bl, al
+	and al, 0b11111110
 
-decode_register_to_register:
-	and al, 0b11111100
-	cmp al, 0b10001000
-	jne decode_immediate_to_reg
+decode_imm_to_mem:
+	cmp al, 0b11000110
+	jne decode_reg_to_reg
 
+	__read_second_byte
+	__read_disp r12
+
+	; read first data byte
 	mov rcx, rsi
 	call fgetc
-
-	; save second byte of instruction, now whole instruction is in bx
-	mov bh, al
-
-	; check MOD field for how many more bytes to fetch
-	mov r12, rbx
-	and r12, 0b1100000000000000 ; mask out MOD field
-	shr r12, 14
-
-	; 8-bit displacement
-	cmp r12, 0b01
-	jne .word_displacement
-
-	mov rcx, rsi
-	call fgetc
-
-	and rax, 0xFF
-	movsx rax, al
-	shl rax, 16
-	or ebx, eax
-
-	jmp .no_displacement
-
-	.word_displacement:
-	cmp r12, 0b10
-	jne .no_displacement
-
-	mov rcx, rsi
-	call fgetc
-
-	and rax, 0xFF
 	mov r13, rax
 
+	mov al, bl
+	and al, 0b1 ; W bit
+	cmp al, 0b1
+	jne .done_data_bytes
+
+	; read second data byte
 	mov rcx, rsi
 	call fgetc
-
-	and rax, 0xFF
 	shl rax, 8
-	or  r13, rax
+	or r13, rax
 
-	shl r13, 16
-	or ebx, r13d
+	.done_data_bytes:
+	mov di, bx
+	and rdi, 0b0000011100000000 ; mask out R/M field
+	shr di, 8
 
-	.no_displacement:
+	__write_mnemonic
+	__write_disp
+	__write_comma
+
+	mov rcx, byte_str
+	mov al, bl
+	and al, 0b1 ; W bit
+	cmp al, 0b1
+	mov rax, word_str
+	cmove rcx, rax
+
+	call write_string
+
+	lea rcx, [fmt_u16]
+	mov rdx, r13
+	call printf
+
+	__write_newline
+
+	jmp decode_mov_return_value
+
+decode_reg_to_reg:
+	and al, 0b11111100
+	cmp al, 0b10001000
+	jne decode_imm_to_reg
+
+	__read_second_byte
+	__read_disp r12
 
 	mov si, bx
 	and rsi, 0b0011100000000000 ; mask out REG field
@@ -104,7 +169,7 @@ decode_register_to_register:
 
 	; check if it is the memory to register case
 	cmp r12, 0b11
-	jne decode_memory_to_register
+	jne decode_mem_to_reg
 
 	mov al, bl
 	and al, 0b10 ; mask out D bit
@@ -121,16 +186,7 @@ decode_register_to_register:
 
 	jmp decode_mov_return_value
 
-decode_memory_to_register:
-%macro __write_disp 0
-	mov rcx, rdi
-	mov rdx, r12
-	mov r8, rbx
-	shr r8, 16
-	and r8, 0xFFFF
-	call write_disp
-%endmacro
-
+decode_mem_to_reg:
 	__write_mnemonic
 
 	mov al, bl
@@ -151,9 +207,7 @@ decode_memory_to_register:
 
 	jmp decode_mov_return_value
 
-%unmacro __write_disp 0
-
-decode_immediate_to_reg:
+decode_imm_to_reg:
 	and al, 0b11110000
 	cmp al, 0b10110000
 	jne print_unknown_instruction
