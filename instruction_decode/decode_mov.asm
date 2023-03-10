@@ -12,9 +12,20 @@
 	and %1, 0b1100000000000000 ; mask out MOD field
 	shr %1, 14
 
-	; 8-bit displacement
+	mov di, bx
+	and rdi, 0b0000011100000000 ; mask out R/M field
+	shr di, 8
+
+	; no displacement or 16-bit displacement
+	cmp %1, 0b0
+	jne .try_byte_displacement
+	cmp rdi, 0b110
+	jne .try_byte_displacement
+	jmp .word_displacement
+
+	.try_byte_displacement:
 	cmp %1, 0b01
-	jne .word_displacement
+	jne .try_word_displacement
 
 	mov rcx, rsi
 	call fgetc
@@ -24,12 +35,13 @@
 	shl rax, 16
 	or ebx, eax
 
-	jmp .no_displacement
+	jmp .done
+
+	.try_word_displacement:
+	cmp %1, 0b10
+	jne .done
 
 	.word_displacement:
-	cmp %1, 0b10
-	jne .no_displacement
-
 	mov rcx, rsi
 	call fgetc
 
@@ -45,7 +57,8 @@
 
 	shl r13, 16
 	or ebx, r13d
-	.no_displacement:
+
+	.done:
 %endmacro
 
 %macro __write_mnemonic 0
@@ -60,9 +73,9 @@
 	call write_reg
 %endmacro
 
-%macro __write_disp 0
+%macro __write_disp 1-2
 	mov rcx, rdi
-	mov rdx, r12
+	mov rdx, %2
 	mov r8, rbx
 	shr r8, 16
 	and r8, 0xFFFF
@@ -131,7 +144,15 @@ decode_imm_to_mem:
 	shr di, 8
 
 	__write_mnemonic
-	__write_disp
+
+	; check if it is the memory to register case
+	cmp r12, 0b11
+	jne .L0
+	__write_disp rdi, r12
+	jmp .L1
+	.L0:
+	__write_reg rdi
+	.L1:
 	__write_comma
 
 	mov rcx, byte_str
@@ -195,10 +216,10 @@ decode_mem_to_reg:
 	jne .swap
 	__write_reg rsi
 	__write_comma
-	__write_disp
+	__write_disp rdi, r12
 	jmp .no_swap
 	.swap:
-	__write_disp
+	__write_disp rdi, r12
 	__write_comma
 	__write_reg rsi
 
@@ -313,16 +334,13 @@ write_disp:
 	mov rcx, '['
 	call putchar
 
-	; load string into rbx
+	cmp rbx, 0
+	jle .no_disp
+
 	lea rax, [disp_table]
 	lea rcx, [rax + 8 * rdi]
 	call write_string
 
-	cmp rbx, 0
-	jg .has_disp
-	jmp .end
-
-	.has_disp:
 	cmp rsi, 0
 	je .end
 
@@ -338,6 +356,18 @@ write_disp:
 	mov rcx, 0x20
 	call putchar
 
+	jmp .write_number
+
+	.no_disp:
+	cmp rdi, 0b110 ; check for direct address
+	je .write_number
+
+	lea rax, [disp_table]
+	lea rcx, [rax + 8 * rdi]
+	call write_string
+	jmp .end
+
+	.write_number:
 	lea rcx, [fmt_s16]
 	; compute absolute value of dx
 	mov rdx, rsi
