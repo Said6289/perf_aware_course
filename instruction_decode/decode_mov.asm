@@ -117,7 +117,7 @@ decode_mov:
 
 decode_imm_to_mem:
 	cmp al, 0b11000110
-	jne decode_reg_to_reg
+	jne decode_mem_to_accum
 
 	__read_second_byte
 	__read_disp r12
@@ -147,7 +147,7 @@ decode_imm_to_mem:
 
 	; check if it is the memory to register case
 	cmp r12, 0b11
-	jne .L0
+	je .L0
 	__write_disp rdi, r12
 	jmp .L1
 	.L0:
@@ -171,6 +171,60 @@ decode_imm_to_mem:
 	__write_newline
 
 	jmp decode_mov_return_value
+
+decode_mem_to_accum:
+	and al, 0b11111100
+	cmp al, 0b10100000
+	jne decode_reg_to_reg
+
+	xor rdi, rdi
+
+	; move address into rbx in the location
+	; of DISP-LO and DISP-HI
+
+	mov rcx, rsi
+	call fgetc
+	and rax, 0xFF
+	shl rax, 16
+	or rbx, rax
+
+	mov al, bl
+	and al, 0b1 ; W bit
+	cmp al, 0b0
+	je .skip_hi
+
+	mov rcx, rsi
+	call fgetc
+	and rax, 0xFF
+	shl rax, 24
+	or rbx, rax
+
+	.skip_hi:
+
+	mov rsi, 0
+	mov rdi, 0b110 ; direct address
+	mov r12, 0b0   ; MOD = 0 for direct address
+
+	__write_mnemonic
+
+	mov al, bl
+	and al, 0b10 ; D bit
+	cmp al, 0b10
+	je .swap
+	__write_reg rsi
+	__write_comma
+	__write_disp rdi, r12
+	jmp .no_swap
+	.swap:
+	__write_disp rdi, r12
+	__write_comma
+	__write_reg rsi
+
+	.no_swap:
+	__write_newline
+
+	jmp decode_mov_return_value
+
 
 decode_reg_to_reg:
 	and al, 0b11111100
